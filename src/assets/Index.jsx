@@ -52,6 +52,8 @@ import C3 from './C3.png'
 import C4 from './C4.png'
 import C5 from './C5.png'
 import U1 from './U1.png'
+import D1 from './D1.png'
+
 
 
 
@@ -77,4 +79,4 @@ import U1 from './U1.png'
 export {F1, F2, F3, F4, H1, H2, H3, H4, H5, H6,P1, P2, P3, P4, 
     Q1, B1, B2, B3, B4, S1, S2, S3, N1, N2, N3, N4, FO1, FO2, FO3,
      FO4, FO5, FO6, FO7, FO8, A1, A2, A3, A4, A5, R1, R2, R3, R4, R5, R6,
-    W1,W2,W3, C1, C2,C3, C4,C5, U1}
+    W1,W2,W3, C1, C2,C3, C4,C5, U1, D1}

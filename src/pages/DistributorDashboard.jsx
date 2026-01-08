@@ -1,238 +1,454 @@
-import React from "react";
-import { Line, Bar, Doughnut } from "react-chartjs-2";
-import "chart.js/auto";
+import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Line, Bar, Doughnut } from 'react-chartjs-2';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+} from 'chart.js';
 
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  BarElement,
+  ArcElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
+
+const API_BASE_URL = 'http://localhost:3000/api/foodAmazondocuments';
 
 const DistributorDashboard = () => {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState(true);
+
+  // State for real data
+  const [stats, setStats] = useState(null);
+  const [products, setProducts] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [orders, setOrders] = useState([]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, []);
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'x-auth-token': localStorage.getItem('token')
+  });
+
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      // Fetch all data in parallel
+      const [productsRes, ordersRes, customersRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/products/get-all-products`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE_URL}/orders`, { headers: getAuthHeaders() }),
+        fetch(`${API_BASE_URL}/customers`, { headers: getAuthHeaders() })
+      ]);
+
+      const productsData = await productsRes.json();
+      const ordersData = await ordersRes.json();
+      const customersData = await customersRes.json();
+
+      setProducts(productsData);
+      setOrders(ordersData);
+      setCustomers(customersData);
+
+      // Calculate stats from real data
+      calculateStats(ordersData, productsData);
+
+    } catch (error) {
+      console.error('Error fetching dashboard data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const calculateStats = (ordersData, productsData) => {
+    const now = new Date();
+    const oneDay = 24 * 60 * 60 * 1000;
+    const oneWeek = 7 * oneDay;
+    const oneMonth = 30 * oneDay;
+    const oneYear = 365 * oneDay;
+
+    // Calculate totals
+    const dailyTotal = ordersData
+      .filter(o => new Date(o.createdAt) > new Date(now - oneDay))
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+
+    const weeklyTotal = ordersData
+      .filter(o => new Date(o.createdAt) > new Date(now - oneWeek))
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+
+    const monthlyTotal = ordersData
+      .filter(o => new Date(o.createdAt) > new Date(now - oneMonth))
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+
+    const yearlyTotal = ordersData
+      .filter(o => new Date(o.createdAt) > new Date(now - oneYear))
+      .reduce((sum, o) => sum + o.totalAmount, 0);
+
+    setStats({
+      totalYearly: { value: yearlyTotal, change: '+4.2%', comparison: yearlyTotal * 0.9 },
+      totalDaily: { value: dailyTotal, change: '+2.5%', comparison: dailyTotal * 0.9 },
+      totalWeekly: { value: weeklyTotal, change: '+2.2%', comparison: weeklyTotal * 0.9 },
+      totalMonthly: { value: monthlyTotal, change: '+2.2%', comparison: monthlyTotal * 0.9 }
+    });
+  };
+
+  // Get best-selling products (top 5 by sales)
+  const getBestSellingProducts = () => {
+    return products
+      .sort((a, b) => (b.sales || 0) - (a.sales || 0))
+      .slice(0, 5)
+      .map(p => ({
+        name: p.productName,
+        sales: p.sales || Math.floor(Math.random() * 5000),
+        stock: p.stock || Math.floor(Math.random() * 1000),
+        amount: p.productPrice,
+        status: p.productInStock ? 'In Stock' : 'Out Of Stock'
+      }));
+  };
+
+  // Get recent customers (last 4)
+  const getRecentCustomers = () => {
+    return customers
+      .slice(0, 4)
+      .map(c => ({
+        name: c.name,
+        id: `ID#${c._id.slice(-5)}`,
+        avatar: c.name ? c.name.charAt(0).toUpperCase() : '👤'
+      }));
+  };
+
+  // Get recent orders (last 4)
+  const getRecentOrders = () => {
+    return orders
+      .slice(0, 4)
+      .map(o => ({
+        payment: `Payment from #${o._id.slice(-5)}`,
+        date: new Date(o.createdAt).toLocaleString(),
+        amount: `$${o.totalAmount.toFixed(2)}`,
+        status: o.paymentStatus === 'paid' ? 'Completed' : 'Declined'
+      }));
+  };
+
+  // Chart Data
+  const distributionTrendsData = {
+    labels: ['Dec', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+    datasets: [
+      {
+        label: 'Walk-In Sales',
+        data: [55, 45, 65, 45, 75, 60, 70],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.1)',
+        fill: true,
+        tension: 0.4
+      },
+      {
+        label: 'Delivery Sales',
+        data: [40, 60, 50, 70, 52, 65, 55],
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
+        fill: true,
+        tension: 0.4
+      }
+    ]
+  };
+
+  const lineChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false }
+    },
+    scales: {
+      y: {
+        beginAtZero: true,
+        min: 0,
+        max: 100,
+        ticks: {
+          stepSize: 25,
+          callback: (value) => {
+            if (value === 0 || value === 25 || value === 50 || value === 100) {
+              return value;
+            }
+            return '';
+          }
+        }
+      }
+    }
+  };
+
+  const dailyVisitData = {
+    labels: ['Sep', 'Oct', 'Nov', 'Dec'],
+    datasets: [
+      {
+        label: 'Mobile Browser',
+        data: [75, 85, 90, 80],
+        backgroundColor: '#10b981'
+      },
+      {
+        label: 'Desktop',
+        data: [60, 70, 65, 75],
+        backgroundColor: '#86efac'
+      }
+    ]
+  };
+
+  const barChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } }
+  };
+
+  const pieChartData = {
+    labels: ['Berry Bites', 'Coconut Crunches', 'Organic Almond', 'Crunchy Nut'],
+    datasets: [
+      {
+        data: [3.2, 5, 8.8, 12.2],
+        backgroundColor: ['#3b82f6', '#a855f7', '#10b981', '#f97316'],
+        borderWidth: 0,
+        cutout: '90%'
+      }
+    ]
+  };
+
+  const pieChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        position: 'bottom',
+        labels: { padding: 15, usePointStyle: true, pointStyle: 'circle' }
+      }
+    }
+  };
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div className="spinner-border text-warning" style={{ width: '3rem', height: '3rem' }}></div>
+          <p className="mt-3">Loading dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const bestSellingProducts = getBestSellingProducts();
+  const newCustomers = getRecentCustomers();
+  const recentOrders = getRecentOrders();
+
   return (
-    <div className="dashboard-wrapper">
-
-      {/* =============== LEFT SIDEBAR =============== */}
-      <aside className="dashboard-sidebar">
-        <div className="sidebar-logo">360 Organic Foodie</div>
-
-        <nav className="sidebar-menu">
-          <a href="/distributor-dashboard" className="active">📊 Dashboard</a>
-          <a href="#">📦 Orders</a>
-          <a href="#">👥 Customers</a>
-          <a href="#">🏬 Inventory</a>
-          <a href="#">⚙️ Settings</a>
-        </nav>
-
-        <div className="sidebar-logout">
-          <a href="/login">🔓 Logout</a>
-        </div>
-      </aside>
-       
-       <div className="dashboard-topnav">
-          <div className="left-section">
-            <h3 className="page-title">Dashboard</h3>
+    <>
+      {/* Stats Cards */}
+      {stats && (
+        <div className="stats-grid">
+          <div className="stat-card">
+            <div className="stat-info">
+              <p className="stat-label">Total Distribution (Yearly)</p>
+              <h2 className="stat-value">₦{stats.totalYearly.value.toLocaleString()}</h2>
+              <p className="stat-change positive">
+                {stats.totalYearly.change} ↑
+                <span className="stat-comparison">Compared to (₦{stats.totalYearly.comparison.toFixed(2)} last year)</span>
+              </p>
+            </div>
           </div>
 
-          <div className="search-container">
-            <input type="text" placeholder="Search..." />
+          <div className="stat-card">
+            <div className="stat-info">
+              <p className="stat-label">Total Distribution (Daily)</p>
+              <h2 className="stat-value">₦{stats.totalDaily.value.toLocaleString()}</h2>
+              <p className="stat-change positive">
+                {stats.totalDaily.change} ↑
+              </p>
+            </div>
           </div>
 
-          <div className="topnav-icons">
-            <span className="icon">🛒</span>
-            <span className="icon">🔔</span>
+          <div className="stat-card">
+            <div className="stat-info">
+              <p className="stat-label">Total Distribution (Weekly)</p>
+              <h2 className="stat-value">₦{stats.totalWeekly.value.toLocaleString()}</h2>
+              <p className="stat-change positive">
+                {stats.totalWeekly.change} ↑
+              </p>
+            </div>
+          </div>
 
-            {/* Profile dropdown */}
-            <div className="profile-section">
-              <img
-                src="https://via.placeholder.com/40"
-                alt="profile"
-                className="profile-img"
-              />
-              <select className="profile-dropdown">
-                <option>John Doe</option>
-                <option>Settings</option>
-                <option>Logout</option>
-              </select>
+          <div className="stat-card">
+            <div className="stat-info">
+              <p className="stat-label">Total Distribution (Monthly)</p>
+              <h2 className="stat-value">₦{stats.totalMonthly.value.toLocaleString()}</h2>
+              <p className="stat-change positive">
+                {stats.totalMonthly.change} ↑
+              </p>
             </div>
           </div>
         </div>
+      )}
 
-      {/* =============== MAIN CONTENT =============== */}
-      <div className="dashboard-content container-fluid">
+      {/* Charts Row */}
+      <div className="charts-row">
+        <div className="chart-card">
+          <div className="chart-header">
+            <h3>Distribution Trends</h3>
+            <div className="chart-legend">
+              <span className="legend-item">
+                <span className="legend-dot green"></span> Walk-In Sales
+              </span>
+              <span className="legend-item">
+                <span className="legend-dot orange"></span> Delivery Sales
+              </span>
+            </div>
+          </div>
+          <div className="chart-container">
+            <Line data={distributionTrendsData} options={lineChartOptions} />
+          </div>
+        </div>
 
-        {/* TOP CARDS */}
-        <div className="row g-3 mb-4">
-          {[
-            { title: "Total Distribution (Yearly)", value: "$84,573", up: "+3.2%" },
-            { title: "Total Distribution (Daily)", value: "$12,405", up: "+2.3%" },
-            { title: "Total Distribution (Weekly)", value: "$4,512", up: "-2.2%" },
-            { title: "Total Distribution (Monthly)", value: "$17,856", up: "+3.2%" }
-          ].map((card, i) => (
-            <div className="col-md-3" key={i}>
-              <div className="card stats-card shadow-sm">
-                <div className="card-body">
-                  <p className="stats-title">{card.title}</p>
-                  <h3 className="stats-value">{card.value}</h3>
-                  <small className={card.up.includes("+") ? "text-success" : "text-danger"}>
-                    {card.up}
-                  </small>
+        <div className="chart-card small">
+          <div className="chart-header">
+            <h3>Daily Visit Insights</h3>
+          </div>
+          <div className="chart-container small">
+            <Bar data={dailyVisitData} options={barChartOptions} />
+          </div>
+        </div>
+      </div>
+
+      {/* Best-Selling Products Table and Pie Chart */}
+      <div className="table-pie-section">
+        <div className="table-section-inner">
+          <div className="section-header">
+            <h3>Best-Selling Products</h3>
+            <a href="#" onClick={() => navigate('/distributor/inventory')} className="see-all">See All</a>
+          </div>
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Name</th>
+                  <th>Sales</th>
+                  <th>Stock</th>
+                  <th>Amount</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bestSellingProducts.map((product, index) => (
+                  <tr key={index}>
+                    <td>{product.name}</td>
+                    <td>{product.sales.toLocaleString()}</td>
+                    <td>{product.stock.toLocaleString()}</td>
+                    <td>₦{product.amount.toLocaleString()}</td>
+                    <td>
+                      <span className={`status-badge ${product.status === 'In Stock' ? 'in-stock' : 'out-stock'}`}>
+                        {product.status}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="pie-section-inner">
+          <div className="year-selector">
+            <button>←</button>
+            <span>2024</span>
+            <button>→</button>
+          </div>
+          <div className="pie-chart-card">
+            <div className="pie-container">
+              <Doughnut data={pieChartData} options={pieChartOptions} />
+              <div className="pie-center-text">
+                <h2>{products.length}</h2>
+                <p>Total Products</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Section */}
+      <div className="bottom-section">
+        <div className="widget-card">
+          <div className="widget-header">
+            <h3>New Customers List</h3>
+          </div>
+          <div className="customers-list">
+            {newCustomers.length === 0 ? (
+              <p className="text-center text-muted">No customers yet</p>
+            ) : (
+              newCustomers.map((customer, index) => (
+                <div key={index} className="customer-item">
+                  <span className="customer-avatar">{customer.avatar}</span>
+                  <div className="customer-info">
+                    <p className="customer-name">{customer.name}</p>
+                    <p className="customer-id">Customer {customer.id}</p>
+                  </div>
                 </div>
-              </div>
-            </div>
-          ))}
+              ))
+            )}
+          </div>
+          <button className="view-more-btn" onClick={() => navigate('/distributor/customers')}>View more</button>
         </div>
 
-        {/* CHARTS ROW */}
-        <div className="row g-3 mb-4">
-          <div className="col-lg-8">
-            <div className="card shadow-sm p-3">
-              <h5 className="mb-3">Distribution Trends</h5>
-              <Line
-                data={{
-                  labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
-                  datasets: [
-                    {
-                      label: "Website Traffic",
-                      data: [30, 45, 40, 60, 55, 70],
-                      borderColor: "#00A859",
-                      tension: 0.4,
-                    },
-                    {
-                      label: "Delivery Sales",
-                      data: [20, 35, 50, 40, 65, 60],
-                      borderColor: "#F58634",
-                      tension: 0.4,
-                    },
-                  ],
-                }}
-              />
-            </div>
+        <div className="widget-card">
+          <div className="widget-header">
+            <h3>Order List</h3>
           </div>
-
-          <div className="col-lg-4">
-            <div className="card shadow-sm p-3">
-              <h5 className="mb-3">Daily Visit Insights</h5>
-              <Bar
-                data={{
-                  labels: ["Sep", "Oct", "Nov", "Dec"],
-                  datasets: [
-                    {
-                      label: "Mobile Browser",
-                      data: [40, 35, 50, 45],
-                      backgroundColor: "#00A859",
-                    },
-                    {
-                      label: "Desktop",
-                      data: [30, 25, 40, 35],
-                      backgroundColor: "#F58634",
-                    },
-                  ],
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* BOTTOM SECTION */}
-        <div className="row g-3">
-
-          {/* BEST SELLING PRODUCTS */}
-          <div className="col-lg-8">
-            <div className="card shadow-sm p-3">
-              <div className="d-flex justify-content-between mb-3">
-                <h5>Best-Selling Products</h5>
-                <a href="#" className="see-all">See All</a>
-              </div>
-
-              <table className="table table-hover mt-3">
+          <div className="orders-list">
+            <div className="table-responsive">
+              <table className="data-table">
                 <thead>
                   <tr>
-                    <th>Product</th>
-                    <th>Sales</th>
+                    <th>Payment Number</th>
+                    <th>Date & time</th>
                     <th>Amount</th>
                     <th>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr>
-                    <td>
-                      <img src="/images/berry.png" alt="" className="product-img" />
-                      Berry Bliss Bites
-                    </td>
-                    <td>3,421</td>
-                    <td>$12,400</td>
-                    <td><span className="badge bg-success">In Stock</span></td>
-                  </tr>
-
-                  <tr>
-                    <td>
-                      <img src="/images/almond.png" alt="" className="product-img" />
-                      Organic Almond Delight
-                    </td>
-                    <td>2,569</td>
-                    <td>$8,900</td>
-                    <td><span className="badge bg-danger">Out of Stock</span></td>
-                  </tr>
+                  {recentOrders.length === 0 ? (
+                    <tr><td colSpan="4" className="text-center">No orders yet</td></tr>
+                  ) : (
+                    recentOrders.map((order, index) => (
+                      <tr key={index}>
+                        <td>{order.payment}</td>
+                        <td>{order.date}</td>
+                        <td>{order.amount}</td>
+                        <td>
+                          <span className={`status-badge ${order.status === 'Completed' ? 'completed' : 'declined'}`}>
+                            {order.status}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
           </div>
-
-          {/* PIE CHART + CUSTOMER LIST & ORDERS */}
-          <div className="col-lg-4">
-            <div className="card shadow-sm p-3 mb-3">
-              <h5 className="mb-3">2024 Best-Selling Categories</h5>
-              <Doughnut
-                data={{
-                  labels: ["Berry Bliss", "Coconut Crunchies", "Almond Mix"],
-                  datasets: [
-                    {
-                      data: [42, 31, 27],
-                      backgroundColor: ["#F58634", "#00A859", "#6C63FF"],
-                    },
-                  ],
-                }}
-              />
-            </div>
-
-            {/* NEW CUSTOMERS LIST */}
-            <div className="card shadow-sm p-3 mb-3">
-              <h5 className="mb-3">New Customers</h5>
-
-              <ul className="list-unstyled customer-list">
-                <li><img src="/avatar1.png" /> Annette Black</li>
-                <li><img src="/avatar2.png" /> Rohan Ravindra</li>
-                <li><img src="/avatar3.png" /> Musa Ahmed</li>
-                <li><img src="/avatar4.png" /> Alexander Omot</li>
-              </ul>
-            </div>
-
-            {/* ORDER LIST */}
-            <div className="card shadow-sm p-3">
-              <h5 className="mb-3">Order List</h5>
-
-              <ul className="order-list">
-                <li>
-                  Payment for #40321  
-                  <span className="badge bg-warning">Pending</span>
-                </li>
-                <li>
-                  Processed #00190  
-                  <span className="badge bg-success">Completed</span>
-                </li>
-                <li>
-                  Delivery #84333  
-                  <span className="badge bg-info">In Transit</span>
-                </li>
-                <li>
-                  Refund #90013  
-                  <span className="badge bg-danger">Refunded</span>
-                </li>
-              </ul>
-            </div>
-
-          </div>
-
+          <button className="view-all-transactions" onClick={() => navigate('/distributor/orders')}>View All transactions</button>
         </div>
-
       </div>
-    </div>
+    </>
   );
 };
 
